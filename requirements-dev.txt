@@ -1,0 +1,6 @@
+# Everything needed to run the tests, the linter and a release build.
+-r requirements.txt
+pytest>=7.0
+ruff>=0.5
+build>=1.0
+twine>=5.0

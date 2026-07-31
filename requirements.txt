@@ -1,0 +1,4 @@
+# Runtime dependencies.
+# The package itself declares these in pyproject.toml; this file exists so that
+# `pip install -r requirements.txt` works for people who just cloned the repo.
+pypdf>=5.0

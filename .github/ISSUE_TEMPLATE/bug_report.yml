@@ -1,0 +1,52 @@
+name: Bug report
+description: Something came out wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. If the problem is with the *printed* result,
+        the printer details below matter more than anything else.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: The exact command or Python code you ran.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: printer
+    attributes:
+      label: Printer and duplex setting
+      description: e.g. "Brother HL-L2350DW, duplex flip on long edge, face-up output"
+      placeholder: Not applicable - the generated PDF itself is wrong
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Output of `booklette --version` and `python --version`, plus your
+        operating system.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: |
+        A photo of the folded result, or the output of `--dry-run`, is very
+        helpful. Please do not attach confidential PDFs.

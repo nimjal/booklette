@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest an option or a binding style
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to print?
+      description: |
+        Describe the booklet you want, and what stops you from producing it
+        today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would it look like?
+      description: A command line flag, an API argument, a different imposition?
+      placeholder: booklette book.pdf --creep 0.3
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have tried
+      description: Other tools, manual workarounds, or option combinations.
