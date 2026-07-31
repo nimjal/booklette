@@ -13,7 +13,14 @@ from dataclasses import dataclass
 import pytest
 from pypdf import PdfReader, PdfWriter
 
-from booklette import BookletError, BookletOptions, Duplex, SheetOrder, create_booklet
+from booklette import (
+    BookletError,
+    BookletOptions,
+    Duplex,
+    Filler,
+    SheetOrder,
+    create_booklet,
+)
 from booklette.paper import mm_to_points
 
 
@@ -51,6 +58,28 @@ def placed_pages(page) -> list[PlacedPage]:
 def page_numbers(page) -> list[int]:
     """The source page numbers drawn on one output page, left half first."""
     return [placed.number for placed in sorted(placed_pages(page), key=lambda p: p.x)]
+
+
+def heading_positions(page, heading: str = "Notes:") -> list[float]:
+    """The x position of every filler heading drawn on one output page."""
+    found: list[float] = []
+
+    def visitor(text, cm, tm, font_dict, font_size):
+        if heading in text:
+            found.append(cm[0] * tm[4] + cm[2] * tm[5] + cm[4])
+
+    page.extract_text(visitor_text=visitor)
+    return found
+
+
+def ruled_lines(page) -> int:
+    """How many ruled lines were drawn onto one output page.
+
+    ``l`` is the "line to" operator; pypdf re-wraps the operators it merges, so
+    the stream is tokenised rather than searched for a fixed spelling.
+    """
+    operators = page.get_contents().get_data().decode("latin-1").split()
+    return operators.count("l")
 
 
 class TestOutputShape:
@@ -163,6 +192,133 @@ class TestDuplex:
         page_two = next(p for p in placed_pages(back) if p.number == 2)
         assert page_one.x > middle  # right half of the front
         assert page_two.x > middle  # mirrored onto the same half of the paper
+
+
+class TestFiller:
+    """The padding pages at the back come out as note paper by default.
+
+    A five page document is imposed as eight, so pages 6, 7 and 8 are padding.
+    Page 8 is the back cover and lands on the left half of the first sheet; the
+    other two get the notes.
+    """
+
+    def test_padding_pages_are_ruled_as_notes(self, numbered_pdf, tmp_path):
+        result = create_booklet(numbered_pdf(5), tmp_path / "out.pdf")
+
+        pages = PdfReader(tmp_path / "out.pdf").pages
+        assert result.blank_pages == 3
+        assert result.filled_pages == 2
+        assert result.empty_pages == 1
+        assert sum(len(heading_positions(page)) for page in pages) == 2
+        assert all(ruled_lines(page) > 5 for page in pages if heading_positions(page))
+
+    def test_the_back_cover_is_left_empty(self, numbered_pdf, tmp_path):
+        create_booklet(numbered_pdf(5), tmp_path / "out.pdf")
+
+        # The back cover shares its sheet side with page 1, and stays blank.
+        first_side = PdfReader(tmp_path / "out.pdf").pages[0]
+        assert page_numbers(first_side) == [1]
+        assert heading_positions(first_side) == []
+
+    def test_the_back_cover_can_be_filled_too(self, numbered_pdf, tmp_path):
+        result = create_booklet(
+            numbered_pdf(5),
+            tmp_path / "out.pdf",
+            BookletOptions(fill_back_cover=True),
+        )
+
+        first_side = PdfReader(tmp_path / "out.pdf").pages[0]
+        middle = float(first_side.mediabox.width) / 2
+        headings = heading_positions(first_side)
+
+        assert result.filled_pages == 3
+        assert result.empty_pages == 0
+        # The back cover is the left half of the first sheet.
+        assert len(headings) == 1
+        assert headings[0] < middle
+
+    def test_blank_filler_leaves_every_padding_page_empty(self, numbered_pdf, tmp_path):
+        result = create_booklet(
+            numbered_pdf(5),
+            tmp_path / "out.pdf",
+            BookletOptions(filler=Filler.BLANK),
+        )
+
+        pages = PdfReader(tmp_path / "out.pdf").pages
+        assert result.filled_pages == 0
+        assert not any(heading_positions(page) for page in pages)
+        assert not any(ruled_lines(page) for page in pages)
+
+    def test_lines_only_leaves_out_the_heading(self, numbered_pdf, tmp_path):
+        create_booklet(
+            numbered_pdf(5),
+            tmp_path / "out.pdf",
+            BookletOptions(filler=Filler.LINES),
+        )
+
+        pages = PdfReader(tmp_path / "out.pdf").pages
+        assert not any(heading_positions(page) for page in pages)
+        assert sum(ruled_lines(page) for page in pages) > 10
+
+    def test_notes_plain_leaves_out_the_lines(self, numbered_pdf, tmp_path):
+        create_booklet(
+            numbered_pdf(5),
+            tmp_path / "out.pdf",
+            BookletOptions(filler=Filler.NOTES_PLAIN),
+        )
+
+        pages = PdfReader(tmp_path / "out.pdf").pages
+        assert sum(len(heading_positions(page)) for page in pages) == 2
+        assert not any(ruled_lines(page) for page in pages)
+
+    def test_the_heading_can_be_changed(self, numbered_pdf, tmp_path):
+        create_booklet(
+            numbered_pdf(5),
+            tmp_path / "out.pdf",
+            BookletOptions(filler_title="Ideas"),
+        )
+
+        pages = PdfReader(tmp_path / "out.pdf").pages
+        assert sum(len(heading_positions(page, "Ideas")) for page in pages) == 2
+        assert not any(heading_positions(page) for page in pages)
+
+    def test_a_heading_only_filler_with_no_heading_draws_nothing(self, numbered_pdf, tmp_path):
+        result = create_booklet(
+            numbered_pdf(5),
+            tmp_path / "out.pdf",
+            BookletOptions(filler=Filler.NOTES_PLAIN, filler_title=""),
+        )
+
+        assert result.filled_pages == 0
+        assert result.empty_pages == 3
+
+    def test_a_document_that_fills_its_sheets_gets_no_notes(self, numbered_pdf, tmp_path):
+        result = create_booklet(numbered_pdf(8), tmp_path / "out.pdf")
+
+        pages = PdfReader(tmp_path / "out.pdf").pages
+        assert result.filled_pages == 0
+        assert not any(heading_positions(page) for page in pages)
+
+    def test_notes_land_on_their_own_half_of_the_sheet(self, numbered_pdf, tmp_path):
+        """A filler is placed like any other page: in one slot, not across the fold."""
+        create_booklet(numbered_pdf(5), tmp_path / "out.pdf", BookletOptions(margin_mm=5))
+
+        second_side = PdfReader(tmp_path / "out.pdf").pages[1]
+        middle = float(second_side.mediabox.width) / 2
+        page_two = next(p for p in placed_pages(second_side) if p.number == 2)
+
+        # Page 2 and the notes page share this side, one half each.
+        assert len(heading_positions(second_side)) == 1
+        assert (heading_positions(second_side)[0] < middle) != (page_two.x < middle)
+
+    def test_every_notes_page_is_drawn_from_the_same_prepared_page(self, numbered_pdf, tmp_path):
+        """Reusing one filler page must not make the second copy come out empty."""
+        create_booklet(numbered_pdf(9), tmp_path / "out.pdf")
+
+        pages = PdfReader(tmp_path / "out.pdf").pages
+        filled = [ruled_lines(page) for page in pages if heading_positions(page)]
+        assert len(filled) == 2
+        assert len(set(filled)) == 1  # both got the same drawing
 
 
 class TestLayoutOptions:

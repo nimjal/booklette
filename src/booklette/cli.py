@@ -7,7 +7,14 @@ import sys
 from collections.abc import Sequence
 
 from . import __version__
-from .builder import BookletError, BookletOptions, create_booklet, default_output_path
+from .builder import (
+    BookletError,
+    BookletOptions,
+    BookletResult,
+    create_booklet,
+    default_output_path,
+)
+from .filler import DEFAULT_TITLE, Filler
 from .imposition import Duplex, SheetOrder, format_plan, impose
 from .paper import PAPER_SIZES_MM
 
@@ -15,7 +22,8 @@ EPILOG = f"""\
 examples:
   booklette report.pdf
   booklette report.pdf -o handout.pdf --margin 8 --gutter 4
-  booklette novel.pdf --signature 16 --duplex short --order normal
+  booklette novel.pdf --signature 16 --duplex short --order reverse
+  booklette recipes.pdf --filler lines --filler-back-cover
   booklette report.pdf --dry-run
 
 known paper sizes: {", ".join(sorted(PAPER_SIZES_MM))} (or a custom "WIDTHxHEIGHT" in mm)
@@ -69,11 +77,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--order",
         type=SheetOrder,
         choices=[order.value for order in SheetOrder],
-        default=SheetOrder.REVERSE,
+        default=SheetOrder.NORMAL,
         help=(
-            "sheet output order: 'reverse' for printers that stack face up and "
-            "fill the tray bottom to top, 'normal' for face-down stacking "
-            "(default: reverse)"
+            "sheet output order: 'normal' for printers that stack face down, "
+            "'reverse' for printers that stack face up and fill the tray bottom "
+            "to top (default: normal)"
         ),
     )
     parser.add_argument(
@@ -104,6 +112,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="extra whitespace either side of the fold, in mm (default: 0)",
     )
     parser.add_argument(
+        "-f",
+        "--filler",
+        type=Filler,
+        choices=[filler.value for filler in Filler],
+        default=Filler.NOTES,
+        help=(
+            "what to print on the padding pages at the back: 'notes' for a "
+            f"{DEFAULT_TITLE!r} heading and ruled lines, 'notes-plain' for the "
+            "heading alone, 'lines' for the lines alone, 'blank' to leave them "
+            "empty (default: notes)"
+        ),
+    )
+    parser.add_argument(
+        "--filler-title",
+        default=DEFAULT_TITLE,
+        metavar="TEXT",
+        help=f"heading for the notes pages (default: {DEFAULT_TITLE!r})",
+    )
+    parser.add_argument(
+        "--filler-back-cover",
+        action="store_true",
+        help="fill the back cover too; it is left empty by default",
+    )
+    parser.add_argument(
         "--rtl",
         action="store_true",
         help="right-to-left booklet: the spine ends up on the right",
@@ -132,6 +164,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         margin_mm=args.margin,
         gutter_mm=args.gutter,
         right_to_left=args.rtl,
+        filler=args.filler,
+        filler_title=args.filler_title,
+        fill_back_cover=args.filler_back_cover,
         password=args.password,
     )
 
@@ -153,12 +188,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"({result.output_pages} sides) of {width:g}x{height:g} mm"
         )
         if result.blank_pages:
-            print(f"  {result.blank_pages} blank page(s) added as padding")
+            summary = _padding_summary(result, options.filler)
+            print(f"  {result.blank_pages} padding page(s) added: {summary}")
         print(
             f"  print duplex (flip on {options.duplex.value} edge) at 100% scale, "
             "then fold and staple"
         )
     return 0
+
+
+def _padding_summary(result: BookletResult, filler: Filler) -> str:
+    """Describe what happened to the padding pages, for the summary line.
+
+    >>> _padding_summary(BookletResult(6, 2, 3, (297.0, 210.0), 2), Filler.NOTES)
+    '2 with notes, 1 left blank'
+    """
+    parts = []
+    if result.filled_pages:
+        parts.append(f"{result.filled_pages} with {filler.value}")
+    if result.empty_pages:
+        parts.append(f"{result.empty_pages} left blank")
+    return ", ".join(parts)
 
 
 def _dry_run(source: str, options: BookletOptions) -> int:

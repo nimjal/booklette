@@ -23,6 +23,10 @@ input.pdf                        booklet.pdf (A4 landscape, 2-up)
 (The back sides are additionally turned 180 degrees, which is what makes
 long-edge duplex printing come out right - see [Printing](#printing).)
 
+A booklet's page count is always a multiple of four, so most documents end with
+a page or three of padding. Those come out as ruled note paper rather than
+blank - see [Padding pages](#padding-pages).
+
 ## Install
 
 ```bash
@@ -51,6 +55,9 @@ booklette report.pdf --margin 8 --gutter 4
 # A long document, folded in groups of 16 pages instead of one thick fold
 booklette novel.pdf --signature 16
 
+# Ruled lines but no "Notes:" heading, and use up the back cover as well
+booklette recipes.pdf --filler lines --filler-back-cover
+
 # See where every page will end up, without writing a file
 booklette report.pdf --dry-run
 ```
@@ -76,7 +83,7 @@ Two printer habits decide the settings, and both are options:
 | Option | Default | Change it when |
 | --- | --- | --- |
 | `--duplex long` / `short` | `long` | the back of each sheet comes out upside down |
-| `--order reverse` / `normal` | `reverse` | the finished stack is back to front |
+| `--order normal` / `reverse` | `normal` | the finished stack is back to front |
 
 **`--duplex`** describes how the printer turns the paper between the two sides.
 Because the sheets are landscape but the paper is fed portrait, long-edge
@@ -89,11 +96,13 @@ baked into the output, so the printer dialog stays on its own default. Pick
 > on paper. If you would rather preview an output that reads upright, use
 > `--duplex short` and set your printer to flip on the short edge.
 
-**`--order`** describes how the printer stacks its output. Printers that drop
-pages face up build the pile "bottom to top", so the last page printed ends up
-on top; emitting the sheets last-first (the default, `reverse`) makes the
-finished pile come out in the right order. Use `normal` for printers that stack
-face down.
+**`--order`** describes how the printer stacks its output. Most printers drop
+their pages face down, so the pile is already in reading order and the sheets
+are written in reading order too - that is the default, `normal`. Printers that
+stack face up build the pile "bottom to top", so the last page printed ends up
+on top; for those, `reverse` emits the sheets last-first, which cancels it out.
+If your printer dialog has its own "reverse page order" option, leave it off:
+two reversals put you back where you started.
 
 If a test print comes out wrong, change **one** of the two and try again - four
 pages of scrap paper will tell you which combination your printer wants.
@@ -105,10 +114,13 @@ pages of scrap paper will tell you which combination your printer wants.
 | `-o, --output PATH` | `<input>-booklet.pdf` | where to write the result |
 | `-p, --paper SIZE` | `a4` | `a3`, `a4`, `a5`, `a6`, `b5`, `letter`, `legal`, `tabloid`, or `WIDTHxHEIGHT` in mm |
 | `-d, --duplex {long,short}` | `long` | edge the printer flips on |
-| `--order {reverse,normal}` | `reverse` | sheet output order |
+| `--order {normal,reverse}` | `normal` | sheet output order |
 | `-s, --signature PAGES` | `0` | fold in groups of PAGES pages (multiple of 4); `0` folds everything at once |
 | `-m, --margin MM` | `0` | whitespace at the outer edges of the sheet |
 | `-g, --gutter MM` | `0` | extra whitespace either side of the fold |
+| `-f, --filler {notes,notes-plain,lines,blank}` | `notes` | what to print on the padding pages |
+| `--filler-title TEXT` | `Notes:` | heading for those pages |
+| `--filler-back-cover` | off | fill the back cover too |
 | `--rtl` | off | right-to-left booklet (spine on the right) |
 | `--password PASS` | - | password for an encrypted input PDF |
 | `-n, --dry-run` | off | print the imposition plan, write nothing |
@@ -116,8 +128,32 @@ pages of scrap paper will tell you which combination your printer wants.
 
 Pages are scaled to fit their half of the sheet and centred, keeping their
 aspect ratio; a document of mixed page sizes is handled page by page. The page
-count is padded with blanks up to a multiple of four, because that is how many
-pages one folded sheet carries.
+count is padded up to a multiple of four, because that is how many pages one
+folded sheet carries.
+
+### Padding pages
+
+A 14 page document is printed as 16, and those two spare pages end up at the
+back of the booklet. By default they are ruled as note paper - a `Notes:`
+heading and a set of lines - so a printed handout has somewhere to write.
+
+The last page of the booklet is the outside of the back cover, and is left
+empty; `--filler-back-cover` uses it as well.
+
+| `--filler` | On each padding page |
+| --- | --- |
+| `notes` | heading and ruled lines (the default) |
+| `notes-plain` | the heading on its own |
+| `lines` | ruled lines on their own |
+| `blank` | nothing |
+
+The heading follows `--filler-title`, so `--filler-title "Shopping list:"` works
+as well as `Notes:`. A filler page is built at the size of the document's first
+page and scaled onto the sheet exactly like a real page, so its ruled area lines
+up with the pages before it, whatever paper you print on.
+
+A document whose page count is already a multiple of four has no padding, and so
+gets no notes pages.
 
 ### Signatures
 
@@ -137,17 +173,19 @@ A saddle-stitched booklet of `n` pages puts these pages on sheet `i`
 | back | `2i + 2` | `n - 2i - 1` |
 
 So an 8 page booklet becomes `[8|1] [2|7] [6|3] [4|5]`. The code follows the
-same three steps:
+same steps:
 
 | Module | Responsibility |
 | --- | --- |
 | `imposition.py` | which page goes where - pure Python, no PDF library |
 | `layout.py` | where on the sheet it goes - rectangles and matrices, no PDF library |
+| `filler.py` | what a padding page looks like, as PDF drawing operators |
 | `builder.py` | the only module that talks to pypdf |
 | `cli.py` | the command line |
 
-Because the first two modules are pure arithmetic, the tricky parts are covered
-by fast unit tests, and you can inspect the plan without a PDF at all:
+Because everything but `builder.py` is pure arithmetic and text, the tricky
+parts are covered by fast unit tests, and you can inspect the plan without a PDF
+at all (`-` is a padding page, `bc` the back cover):
 
 ```python
 from booklette import format_plan, impose

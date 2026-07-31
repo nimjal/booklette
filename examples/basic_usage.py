@@ -12,7 +12,7 @@ from pathlib import Path
 
 from make_sample_pdf import make_numbered_pdf
 
-from booklette import BookletOptions, Duplex, SheetOrder, create_booklet
+from booklette import BookletOptions, Duplex, Filler, SheetOrder, create_booklet
 
 OUTPUT_DIR = Path(__file__).parent / "output"
 
@@ -20,30 +20,39 @@ OUTPUT_DIR = Path(__file__).parent / "output"
 def main() -> None:
     OUTPUT_DIR.mkdir(exist_ok=True)
 
-    source = make_numbered_pdf(OUTPUT_DIR / "sample.pdf", page_count=12)
+    source = make_numbered_pdf(OUTPUT_DIR / "sample.pdf", page_count=14)
     print(f"Sample document: {source}")
 
-    # 1. The defaults: A4, long-edge duplex, sheets emitted last-first for a
-    #    printer that stacks its output face up.
+    # 1. The defaults: A4, long-edge duplex, sheets in reading order for a
+    #    printer that stacks its output face down. The two padding pages at the
+    #    back come out as note paper.
     _convert(source, "booklet-default.pdf", BookletOptions())
 
-    # 2. A comfortable reading copy: room for the staple and for fingers.
+    # 2. A comfortable reading copy: room for the staple and for fingers, and
+    #    note paper with a heading of its own, back cover included.
     _convert(
         source,
         "booklet-with-margins.pdf",
-        BookletOptions(margin_mm=8, gutter_mm=5),
+        BookletOptions(
+            margin_mm=8,
+            gutter_mm=5,
+            filler_title="Ideas:",
+            fill_back_cover=True,
+        ),
     )
 
     # 3. A thick document folded in groups of 8 pages (2 sheets per group),
-    #    printed on a face-down printer that flips on the short edge.
+    #    printed on a face-up printer that flips on the short edge, with the
+    #    spare pages left empty.
     _convert(
         source,
         "booklet-signatures.pdf",
         BookletOptions(
             signature_size=8,
             duplex=Duplex.SHORT_EDGE,
-            order=SheetOrder.NORMAL,
+            order=SheetOrder.REVERSE,
             margin_mm=6,
+            filler=Filler.BLANK,
         ),
     )
 
@@ -55,7 +64,7 @@ def _convert(source: Path, name: str, options: BookletOptions) -> None:
     print(
         f"{name}: {result.source_pages} pages -> {result.sheets} sheets "
         f"({result.output_pages} sides) on {width:g}x{height:g} mm, "
-        f"{result.blank_pages} blank(s)"
+        f"{result.blank_pages} padding page(s), {result.filled_pages} with notes"
     )
 
 

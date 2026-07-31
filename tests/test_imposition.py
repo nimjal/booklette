@@ -5,12 +5,14 @@ from __future__ import annotations
 import pytest
 
 from booklette.imposition import (
+    BACK_COVER_PAGE,
     BLANK_PAGE,
     Duplex,
     SheetOrder,
     count_blank_pages,
     format_plan,
     impose,
+    is_padding,
     pad_to_multiple_of_four,
     split_into_signatures,
 )
@@ -77,18 +79,22 @@ class TestImpose:
         ]
 
     def test_short_documents_are_padded_with_blanks(self):
-        # Five pages need two sheets; the three missing pages become blanks,
-        # and - as in any printed booklet - they end up at the back.
+        # Five pages need two sheets; the three missing pages become padding,
+        # and - as in any printed booklet - they end up at the back. The very
+        # last of them is the back cover, which is named apart from the rest.
         assert sides(impose(5, order=SheetOrder.NORMAL)) == [
-            (BLANK_PAGE, 1),
+            (BACK_COVER_PAGE, 1),
             (2, BLANK_PAGE),
             (BLANK_PAGE, 3),
             (4, 5),
         ]
 
     def test_every_source_page_appears_exactly_once(self):
-        pages = [page for side in sides(impose(23)) for page in side if page != BLANK_PAGE]
+        pages = [page for side in sides(impose(23)) for page in side if not is_padding(page)]
         assert sorted(pages) == list(range(1, 24))
+
+    def test_sheets_come_out_in_reading_order_by_default(self):
+        assert impose(16) == impose(16, order=SheetOrder.NORMAL)
 
     def test_reverse_order_flips_sheets_but_not_their_sides(self):
         normal = impose(16, order=SheetOrder.NORMAL)
@@ -128,6 +134,37 @@ class TestImpose:
             impose(0)
 
 
+class TestBackCover:
+    """The last padding page is the outside of the back cover, and is named."""
+
+    def test_the_last_padding_page_is_the_back_cover(self):
+        pages = [page for side in sides(impose(6)) for page in side]
+        assert pages.count(BACK_COVER_PAGE) == 1
+        assert pages.count(BLANK_PAGE) == 1
+
+    def test_it_lands_on_the_front_of_the_first_sheet(self):
+        # Folded, that half-sheet is the outermost leaf: cover and back cover.
+        first = impose(6, order=SheetOrder.NORMAL)[0]
+        assert first.front.left == BACK_COVER_PAGE
+        assert first.front.right == 1
+
+    def test_a_full_document_has_no_back_cover_marker(self):
+        pages = [page for side in sides(impose(8)) for page in side]
+        assert BACK_COVER_PAGE not in pages
+
+    def test_only_the_last_signature_is_padded(self):
+        sheets = impose(10, signature_size=4, order=SheetOrder.NORMAL)
+        pages = [page for side in sides(sheets) for page in side]
+        assert pages.count(BACK_COVER_PAGE) == 1
+        # The back cover belongs to the last folded group, not the first.
+        assert BACK_COVER_PAGE in [page for side in sides(sheets[-1:]) for page in side]
+
+    def test_padding_is_recognised_whatever_it_is_called(self):
+        assert is_padding(BLANK_PAGE)
+        assert is_padding(BACK_COVER_PAGE)
+        assert not is_padding(1)
+
+
 class TestReporting:
     def test_counts_padding_pages(self):
         assert count_blank_pages(impose(5)) == 3
@@ -138,3 +175,7 @@ class TestReporting:
         assert "sheet 1/2" in plan
         assert "-" in plan  # the padding pages
         assert "rotated 180" in plan
+
+    def test_plan_marks_the_back_cover(self):
+        assert " bc " in format_plan(impose(6))
+        assert " bc " not in format_plan(impose(8))

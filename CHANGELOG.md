@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The padding pages at the back of a booklet are printed as ruled note paper
+  instead of being left empty. `--filler notes|notes-plain|lines|blank` chooses
+  what goes on them, `--filler-title` changes the `Notes:` heading.
+- The last page of the booklet - the outside of the back cover - stays empty
+  even so, unless `--filler-back-cover` is given.
+
+### Changed
+
+- `--order` now defaults to `normal` rather than `reverse`, because most
+  printers stack their output face down and so need no reversing. Printers that
+  stack face up still want `--order reverse`.
+- The summary line reports what became of the padding pages, and `--dry-run`
+  marks the back cover as `bc`.
+
 ## [0.1.0] - 2026-07-31
 
 First release.

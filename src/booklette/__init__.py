@@ -20,7 +20,9 @@ from .builder import (
     create_booklet,
     default_output_path,
 )
+from .filler import DEFAULT_TITLE, Filler
 from .imposition import (
+    BACK_COVER_PAGE,
     BLANK_PAGE,
     PAGES_PER_SHEET,
     Duplex,
@@ -29,6 +31,7 @@ from .imposition import (
     SheetSide,
     format_plan,
     impose,
+    is_padding,
 )
 from .layout import Placement, Rect, SheetLayout, build_sheet_layout, place
 from .paper import PAPER_SIZES_MM, mm_to_points, parse_paper, points_to_mm
@@ -36,13 +39,16 @@ from .paper import PAPER_SIZES_MM, mm_to_points, parse_paper, points_to_mm
 __version__ = "0.1.0"
 
 __all__ = [
+    "BACK_COVER_PAGE",
     "BLANK_PAGE",
+    "DEFAULT_TITLE",
     "PAGES_PER_SHEET",
     "PAPER_SIZES_MM",
     "BookletError",
     "BookletOptions",
     "BookletResult",
     "Duplex",
+    "Filler",
     "Placement",
     "Rect",
     "Sheet",
@@ -55,6 +61,7 @@ __all__ = [
     "default_output_path",
     "format_plan",
     "impose",
+    "is_padding",
     "mm_to_points",
     "parse_paper",
     "place",

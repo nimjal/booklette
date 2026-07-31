@@ -24,8 +24,10 @@ front        ``n - 2i``          ``2i + 1``
 back         ``2i + 2``          ``n - 2i - 1``
 ===========  ==================  ==================
 
-Because every sheet carries four pages, the page count is padded with blanks up
-to a multiple of four.
+Because every sheet carries four pages, the page count is padded up to a
+multiple of four. Those padding pages land at the back of the booklet, where
+:mod:`booklette.filler` turns them into note paper - all but the last one, which
+is the back cover and is named :data:`BACK_COVER_PAGE` so it can be left empty.
 
 Signatures
 ----------
@@ -41,8 +43,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-#: Page number used for a padding page that should be left empty.
+#: Page number used for a padding page, i.e. one with no source page behind it.
 BLANK_PAGE = 0
+
+#: Page number used for the one padding page that lands on the back cover - the
+#: last page of the finished booklet. It is told apart from the other padding
+#: pages because a back cover is normally left empty even when the rest of the
+#: padding is printed as note paper; see :mod:`booklette.filler`.
+BACK_COVER_PAGE = -1
 
 #: Every sheet of paper carries four booklet pages (two per side).
 PAGES_PER_SHEET = 4
@@ -78,11 +86,14 @@ class Duplex(str, Enum):
 class SheetOrder(str, Enum):
     """The order in which finished sheets are handed to the printer.
 
+    * :attr:`NORMAL` - emit sheet 1 first. This is the default: most printers
+      drop their pages face down, so the pile ends up in reading order without
+      any help.
     * :attr:`REVERSE` - emit the last sheet first. Use this for printers that
       stack pages face up, so the pile grows "bottom to top" and the last page
-      printed ends up on top. Reversing the order makes the finished pile come
-      out in reading order, ready to fold.
-    * :attr:`NORMAL` - emit sheet 1 first, for printers that stack face down.
+      printed ends up on top; reversing the order cancels that out.
+
+    If a test print comes out back to front, this is the option to switch.
     """
 
     NORMAL = "normal"
@@ -94,8 +105,9 @@ class SheetSide:
     """One printed side of a sheet: two booklet pages, side by side.
 
     ``left`` and ``right`` are 1-based page numbers of the *source* document, or
-    :data:`BLANK_PAGE` for padding. ``rotated`` means the whole side (both
-    halves together) is turned 180 degrees to survive long-edge duplex.
+    :data:`BLANK_PAGE` / :data:`BACK_COVER_PAGE` for padding. ``rotated`` means
+    the whole side (both halves together) is turned 180 degrees to survive
+    long-edge duplex.
     """
 
     left: int
@@ -122,6 +134,15 @@ class Sheet:
     def sides(self) -> tuple[SheetSide, SheetSide]:
         """Both sides in printing order: front first, then back."""
         return (self.front, self.back)
+
+
+def is_padding(page: int) -> bool:
+    """True for a page number that stands for padding rather than a source page.
+
+    >>> is_padding(BLANK_PAGE), is_padding(BACK_COVER_PAGE), is_padding(1)
+    (True, True, False)
+    """
+    return page <= 0
 
 
 def pad_to_multiple_of_four(pages: list[int]) -> list[int]:
@@ -213,7 +234,7 @@ def impose(
     *,
     signature_size: int = 0,
     duplex: Duplex = Duplex.LONG_EDGE,
-    order: SheetOrder = SheetOrder.REVERSE,
+    order: SheetOrder = SheetOrder.NORMAL,
     right_to_left: bool = False,
 ) -> list[Sheet]:
     """Plan a whole booklet.
@@ -225,13 +246,16 @@ def impose(
     :param right_to_left: mirror the layout for right-to-left reading.
     :returns: the sheets to print, already in output order.
 
-    >>> [sheet.front.pages for sheet in impose(8, order=SheetOrder.NORMAL)]
+    >>> [sheet.front.pages for sheet in impose(8)]
     [(8, 1), (6, 3)]
+    >>> impose(6)[0].front.left == BACK_COVER_PAGE  # the padding at the back
+    True
     """
     if page_count < 1:
         raise ValueError("A booklet needs at least one page")
 
     signatures = split_into_signatures(list(range(1, page_count + 1)), signature_size)
+    _mark_back_cover(signatures)
 
     sheets: list[Sheet] = []
     for number, signature_pages in enumerate(signatures):
@@ -251,10 +275,26 @@ def impose(
     return sheets
 
 
+def _mark_back_cover(signatures: list[list[int]]) -> None:
+    """Rename the last padding page of the book to :data:`BACK_COVER_PAGE`.
+
+    Only the last signature is ever short, and its last page is the last page of
+    the finished booklet: the outside of the back cover. Nothing happens when
+    the document already fills its sheets.
+    """
+    last_signature = signatures[-1]
+    if last_signature[-1] == BLANK_PAGE:
+        last_signature[-1] = BACK_COVER_PAGE
+
+
 def count_blank_pages(sheets: list[Sheet]) -> int:
-    """Count the padding pages added to fill the last sheet(s)."""
+    """Count the padding pages added to fill the last sheet(s).
+
+    >>> count_blank_pages(impose(6))
+    2
+    """
     return sum(
-        1 for sheet in sheets for side in sheet.sides for page in side.pages if page == BLANK_PAGE
+        1 for sheet in sheets for side in sheet.sides for page in side.pages if is_padding(page)
     )
 
 
@@ -263,9 +303,13 @@ def format_plan(sheets: list[Sheet]) -> str:
 
     Sheets are numbered in the order they are written to the file, which with
     :attr:`SheetOrder.REVERSE` is the opposite of the order they are folded in.
+    A padding page shows as ``-``, and the one that lands on the back cover as
+    ``bc``.
 
-    >>> print(format_plan(impose(4, order=SheetOrder.NORMAL)))
+    >>> print(format_plan(impose(4)))
     sheet 1/1  signature 1  front [  4 |  1 ]  back  [  2 |  3 ] rotated 180
+    >>> print(format_plan(impose(2)))
+    sheet 1/1  signature 1  front [ bc |  1 ]  back  [  2 |  - ] rotated 180
     """
     lines = []
     total = len(sheets)
@@ -273,8 +317,16 @@ def format_plan(sheets: list[Sheet]) -> str:
         parts = [f"sheet {index}/{total}", f"signature {sheet.signature + 1}"]
         for side in sheet.sides:
             name = "back " if side.is_back else "front"
-            left = "  -" if side.left == BLANK_PAGE else f"{side.left:3d}"
-            right = "  -" if side.right == BLANK_PAGE else f"{side.right:3d}"
+            left, right = (_format_page(page) for page in side.pages)
             parts.append(f"{name} [{left} |{right} ]{' rotated 180' if side.rotated else ''}")
         lines.append("  ".join(parts))
     return "\n".join(lines)
+
+
+def _format_page(page: int) -> str:
+    """One page number, right-aligned in three columns, for :func:`format_plan`."""
+    if page == BACK_COVER_PAGE:
+        return " bc"
+    if page == BLANK_PAGE:
+        return "  -"
+    return f"{page:3d}"

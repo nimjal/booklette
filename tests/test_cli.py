@@ -6,6 +6,7 @@ import pytest
 from pypdf import PdfReader
 
 from booklette.cli import main
+from booklette.filler import Filler
 from booklette.imposition import Duplex, SheetOrder
 
 
@@ -34,7 +35,15 @@ class TestDefaults:
 
     def test_summary_mentions_padding(self, numbered_pdf, capsys):
         main([str(numbered_pdf(5))])
-        assert "blank page(s)" in capsys.readouterr().out
+
+        out = capsys.readouterr().out
+        assert "3 padding page(s) added" in out
+        assert "2 with notes" in out
+        assert "1 left blank" in out  # the back cover
+
+    def test_summary_of_an_unfilled_booklet(self, numbered_pdf, capsys):
+        main([str(numbered_pdf(5)), "--filler", "blank"])
+        assert "3 left blank" in capsys.readouterr().out
 
 
 class TestOptions:
@@ -42,12 +51,41 @@ class TestOptions:
         from booklette.cli import build_parser
 
         args = build_parser().parse_args(
-            ["in.pdf", "--duplex", "short", "--order", "normal", "--signature", "16"]
+            ["in.pdf", "--duplex", "short", "--order", "reverse", "--signature", "16"]
         )
 
         assert args.duplex is Duplex.SHORT_EDGE
-        assert args.order is SheetOrder.NORMAL
+        assert args.order is SheetOrder.REVERSE
         assert args.signature == 16
+
+    def test_printing_defaults(self):
+        from booklette.cli import build_parser
+
+        args = build_parser().parse_args(["in.pdf"])
+
+        assert args.order is SheetOrder.NORMAL
+        assert args.duplex is Duplex.LONG_EDGE
+        assert args.filler is Filler.NOTES
+        assert args.filler_title == "Notes:"
+        assert args.filler_back_cover is False
+
+    def test_parses_the_filler_options(self):
+        from booklette.cli import build_parser
+
+        args = build_parser().parse_args(
+            ["in.pdf", "--filler", "lines", "--filler-title", "Ideas", "--filler-back-cover"]
+        )
+
+        assert args.filler is Filler.LINES
+        assert args.filler_title == "Ideas"
+        assert args.filler_back_cover is True
+
+    def test_filler_changes_the_output(self, numbered_pdf, tmp_path):
+        source = numbered_pdf(5)
+        main([str(source), "-o", str(tmp_path / "notes.pdf")])
+        main([str(source), "-o", str(tmp_path / "blank.pdf"), "--filler", "blank"])
+
+        assert (tmp_path / "notes.pdf").read_bytes() != (tmp_path / "blank.pdf").read_bytes()
 
     def test_margin_and_gutter_change_the_output(self, numbered_pdf, tmp_path):
         source = numbered_pdf(4)

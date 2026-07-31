@@ -24,7 +24,8 @@ The test suite imports this script as a fixture, so it stays working.
 ## `basic_usage.py`
 
 The library API. Creates a sample document and imposes it three ways - defaults,
-generous margins, and short-edge duplex with signatures - into `examples/output/`.
+generous margins with a heading of its own on the notes pages, and short-edge
+duplex with signatures and no notes at all - into `examples/output/`.
 
 ```bash
 python examples/basic_usage.py
