@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-01
+
 ### Added
 
 - The padding pages at the back of a booklet are printed as ruled note paper
@@ -42,5 +44,6 @@ First release.
   `/Rotate` flag.
 - A Python API: `create_booklet`, `BookletOptions`, `impose`, `format_plan`.
 
-[Unreleased]: https://github.com/nimjal/booklette/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nimjal/booklette/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/nimjal/booklette/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nimjal/booklette/releases/tag/v0.1.0

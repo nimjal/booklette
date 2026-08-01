@@ -36,7 +36,7 @@ from .imposition import (
 from .layout import Placement, Rect, SheetLayout, build_sheet_layout, place
 from .paper import PAPER_SIZES_MM, mm_to_points, parse_paper, points_to_mm
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "BACK_COVER_PAGE",
